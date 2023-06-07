@@ -3,13 +3,17 @@
 pragma solidity 0.8.16;
 
 import "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/KeeperCompatibleInterface.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+
 
 
 // See: https://github.com/witherblock/gyarados/blob/main/contracts/CrossChainRateProvider.sol
-interface CrossChainRateProvider {
+interface ICrossChainRateProvider {
     function updateRate() external payable;
 }
 
@@ -21,53 +25,114 @@ interface CrossChainRateProvider {
  * @notice The contract includes the ability to withdraw eth and sweep all ERC20 to the owner address (owner only)
  * see https://github.com/witherblock/gyarados/blob/main/contracts/CrossChainRateProvider.sol
  */
-contract LZRateProviderPoker is ConfirmedOwner, Pausable {
+contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterface {
+    using EnumerableSet for EnumerableSet.AddressSet;
     event poked(address[] gaugelist, uint256 cost);
 
 
-    // events below here are debugging and should be removed
     event wrongCaller(address sender, address registry);
-    event rateProviderListSet(address[] oldList, address[] newList);
     event minWaitPeriodUpdated(uint256 minWaitSeconds);
     event gasTokenWithdrawn(uint256 amount, address recipient);
     event ERC20Swept(address token, address recipient, uint256 amount);
+    event rateProviderAdded(address rateProvider);
+    event rateProviderAlreadyExists(address rateProvider);
     event KeeperAddressUpdated(address oldAddress, address newAddress);
+    event rateProviderRemove(address rateProvider);
+    event removeNonexistentRateProvider(address rateProvider);
+    event pokeFailed(address rateProvider);
+
     error OnlyKeeperRegistry(address sender);
 
 
+
     address public KeeperAddress;
-    address[] public LZRateProviders;
-    uint256 MinWaitPeriodSeconds;
-    uint256 LastRun;
+    EnumerableSet.AddressSet private LZRateProviders;
+    uint256 public MinWaitPeriodSeconds;
+    uint256 public LastRun;
 
      /**
-   * @param keeperAddress The address of the keeper that will call the poke
    * @param minWaitPeriodSeconds The minimum wait period for address between funding (for security)
-   * @param lzRateProviders A list of cross chain rate providers to poke (https://github.com/witherblock/gyarados/blob/main/contracts/CrossChainRateProvider.sol)
    */
-    constructor(address keeperAddress, address[] memory lzRateProviders, uint256 minWaitPeriodSeconds)
+    constructor(uint256 minWaitPeriodSeconds)
     ConfirmedOwner(msg.sender) {
-        setKeeperAddress(keeperAddress);
-        setRateProviderList(lzRateProviders);
         setMinWaitPeriodSeconds(minWaitPeriodSeconds);
     }
 
-    function pokeAll() public onlyKeeper whenNotPaused {
-        address[] memory rateProviders = LZRateProviders;
+      /**
+   * @notice Check if enough time has passed and if so return true and a list of rate providers to poke based on the
+   * @notice current contents of LZRateProviders.  This is done to save gas from getting EnumerableSet values on execution.
+   * @return upkeepNeeded signals if upkeep is needed, performData is an abi encoded list of addresses to poke
+   */
+  function checkUpkeep(bytes calldata) external view override whenNotPaused
+  returns (bool upkeepNeeded, bytes memory performData){
+      if (
+          LastRun + MinWaitPeriodSeconds <= block.timestamp
+      ) {
+          return (true, abi.encode(getRateProviders()));
+      } else {
+          return (false, abi.encode(new address[](0)));
+      }
+  }
+
+    function performUpkeep(bytes calldata performData) external override  whenNotPaused {
+        address[] memory toPoke = abi.decode(performData, (address[]));
+        pokeList(toPoke);
+  }
+
+     /**
+   * @notice Calls updateRate() on a list of LZ Rate Providers
+   */
+    function pokeList(address[] memory rateProviders) internal whenNotPaused {
         for (uint i=0; i<rateProviders.length; i++){
-            CrossChainRateProvider(rateProviders[i]).updateRate();
+            try ICrossChainRateProvider(rateProviders[i]).updateRate(){
+                // do we need an event here
+            }
+            catch {
+                emit pokeFailed(rateProviders[i]);
+            }
         }
     }
-    /**
-     * @notice Sets the list of addresses to watch
-   * @param lzRateProviders the list of addresses to watch
-   */
-    function setRateProviderList(
-        address[] memory lzRateProviders
-    ) public onlyOwner {
-        emit rateProviderListSet(LZRateProviders, lzRateProviders);
-        LZRateProviders = lzRateProviders;
+
+    function addRateProvider (address rateProvider) public onlyOwner {
+        if(LZRateProviders.add(rateProvider)) {
+            emit rateProviderAdded(rateProvider);
+        } else {
+            emit rateProviderAlreadyExists(rateProvider);
+        }
     }
+
+    function addRateProviders (address[] memory rateProviders) public onlyOwner {
+        for(uint i=0; i<rateProviders.length; i++){
+             if(LZRateProviders.add(rateProviders[i])) {
+                 emit rateProviderAdded(rateProviders[i]);
+             } else {
+                 emit rateProviderAlreadyExists(rateProviders[i]);
+             }
+        }
+    }
+    function removeRateProvider(address rateProvider) public onlyOwner {
+        if(LZRateProviders.remove(rateProvider)){
+            emit rateProviderRemove(rateProvider);
+        } else {
+            emit removeNonexistentRateProvider(rateProvider);
+        }
+    }
+
+    function removeRateProviders(address[] memory rateProviders) public onlyOwner {
+        for(uint i=0; i<rateProviders.length; i++){
+            if(LZRateProviders.remove(rateProviders[i])){
+                emit rateProviderRemove(rateProviders[i]);
+            } else {
+                emit removeNonexistentRateProvider(rateProviders[i]);
+            }
+        }
+    }
+
+
+    function getRateProviders() public view returns (address[] memory) {
+        return LZRateProviders.values();
+    }
+
 
     /**
      * @notice Withdraws the contract balance back to the owner
@@ -75,7 +140,7 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable {
    */
     function withdrawGasToken(uint256 amount) external onlyOwner {
         emit gasTokenWithdrawn(amount, owner());
-        payable(owner()).transfer(amount);
+        Address.sendValue(payable(owner()), amount);
     }
 
     /**
@@ -116,13 +181,5 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable {
    */
     function unpause() external onlyOwner {
         _unpause();
-    }
-
-    modifier onlyKeeper() {
-        if (msg.sender != KeeperAddress && msg.sender != owner()) {
-            emit wrongCaller(msg.sender, KeeperAddress);
-            revert OnlyKeeperRegistry(msg.sender);
-        }
-        _;
     }
 }
