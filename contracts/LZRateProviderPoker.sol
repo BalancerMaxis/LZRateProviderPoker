@@ -40,6 +40,7 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
     event rateProviderRemove(address rateProvider);
     event removeNonexistentRateProvider(address rateProvider);
     event pokeFailed(address rateProvider);
+    event FundsAdded(uint256 amountAdded, uint256 balance, address payee);
 
     error OnlyKeeperRegistry(address sender);
 
@@ -74,9 +75,10 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
       }
   }
 
-    function performUpkeep(bytes calldata performData) external override  whenNotPaused {
+    function performUpkeep(bytes calldata performData) external override whenNotPaused {
         address[] memory toPoke = abi.decode(performData, (address[]));
         pokeList(toPoke);
+        LastRun = block.timestamp;
   }
 
      /**
@@ -168,6 +170,12 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
         emit minWaitPeriodUpdated(MinWaitPeriodSeconds);
         MinWaitPeriodSeconds = minWaitSeconds;
     }
+  /**
+   * @notice Receive funds
+   */
+  receive() external payable {
+    emit FundsAdded(msg.value, address(this).balance, msg.sender);
+  }
 
     /**
      * @notice Pauses the contract, which prevents executing performUpkeep
