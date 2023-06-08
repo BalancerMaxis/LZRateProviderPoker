@@ -84,8 +84,8 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
    */
     function pokeList(address[] memory rateProviders) internal whenNotPaused {
         for (uint i=0; i<rateProviders.length; i++){
-            try ICrossChainRateProvider(rateProviders[i]).updateRate(){
-                // do we need an event here
+            try ICrossChainRateProvider(rateProviders[i]).updateRate{value: 0.01 ether}(){
+                // updateRate() fires an event on success
             }
             catch {
                 emit pokeFailed(rateProviders[i]);
