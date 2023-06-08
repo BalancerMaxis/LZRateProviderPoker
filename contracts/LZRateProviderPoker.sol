@@ -67,6 +67,9 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
    */
   function checkUpkeep(bytes calldata) external view override whenNotPaused
   returns (bool upkeepNeeded, bytes memory performData){
+      if(address(this).balance < 0.01 ether){
+            return (false, abi.encode(new address[](0)));
+        }
       if (
           LastRun + MinWaitPeriodSeconds <= block.timestamp
       ) {
@@ -77,6 +80,9 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
   }
 
     function performUpkeep(bytes calldata performData) external override whenNotPaused onlyKeeper {
+        if(address(this).balance < 0.01 ether){
+            revert("not enough funds in contract");
+        }
         address[] memory toPoke = abi.decode(performData, (address[]));
         _pokeList(toPoke);
         LastRun = block.timestamp;
@@ -86,6 +92,7 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
    * @notice Calls updateRate() on a list of LZ Rate Providers
    */
     function pokeList(address[] memory rateProviders) external whenNotPaused onlyOwner {
+
         _pokeList(rateProviders);
     }
 
@@ -93,6 +100,9 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
    * @notice Calls updateRate() on a list of LZ Rate Providers
    */
     function _pokeList(address[] memory rateProviders) internal whenNotPaused {
+        if(address(this).balance < 0.01 ether){
+            revert("not enough funds in contract");
+        }
         for (uint i=0; i<rateProviders.length; i++){
             try ICrossChainRateProvider(rateProviders[i]).updateRate{value: 0.01 ether}(){
                 // updateRate() fires an event on success
