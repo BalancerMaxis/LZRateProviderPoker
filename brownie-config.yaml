@@ -3,7 +3,7 @@ autofetch_sources: True
 networks:
   default: mainnet-fork
 
-dotenv: .env
+#dotenv: .env
 
 dependencies:
     - OpenZeppelin/openzeppelin-contracts@4.5.0
