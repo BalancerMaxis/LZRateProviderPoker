@@ -54,9 +54,10 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
      /**
    * @param minWaitPeriodSeconds The minimum wait period for address between funding (for security)
    */
-    constructor(uint256 minWaitPeriodSeconds)
+    constructor(uint256 minWaitPeriodSeconds, address keeperAddress)
     ConfirmedOwner(msg.sender) {
         setMinWaitPeriodSeconds(minWaitPeriodSeconds);
+        setKeeperAddress(keeperAddress);
     }
 
       /**
@@ -75,16 +76,23 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
       }
   }
 
-    function performUpkeep(bytes calldata performData) external override whenNotPaused {
+    function performUpkeep(bytes calldata performData) external override whenNotPaused onlyKeeper {
         address[] memory toPoke = abi.decode(performData, (address[]));
-        pokeList(toPoke);
+        _pokeList(toPoke);
         LastRun = block.timestamp;
   }
+
+       /**
+   * @notice Calls updateRate() on a list of LZ Rate Providers
+   */
+    function pokeList(address[] memory rateProviders) external whenNotPaused onlyOwner {
+        _pokeList(rateProviders);
+    }
 
      /**
    * @notice Calls updateRate() on a list of LZ Rate Providers
    */
-    function pokeList(address[] memory rateProviders) internal whenNotPaused {
+    function _pokeList(address[] memory rateProviders) internal whenNotPaused {
         for (uint i=0; i<rateProviders.length; i++){
             try ICrossChainRateProvider(rateProviders[i]).updateRate{value: 0.01 ether}(){
                 // updateRate() fires an event on success
@@ -190,4 +198,14 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
     function unpause() external onlyOwner {
         _unpause();
     }
+
+    modifier onlyKeeper() {
+        if (msg.sender != KeeperAddress && msg.sender != owner()) {
+            revert OnlyKeeperRegistry(msg.sender);
+        }
+    _;
+  }
+
 }
+
+

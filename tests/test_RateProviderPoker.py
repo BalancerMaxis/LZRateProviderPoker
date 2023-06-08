@@ -5,15 +5,15 @@ import pytest
 
 
 
-def test_pokeMany(admin, poker, rate_providers):
+def test_pokeMany(admin, poker, upkeep_caller, rate_providers):
     poker.addRateProviders(rate_providers, {"from": admin})
     admin.transfer(poker, 1*10**18)
     (upkeepNeeded, performData) = poker.checkUpkeep(b"")
     assert upkeepNeeded, "Poker doesn't want to poke when it's got eth, never run, and has things to poke"
-    tx = poker.performUpkeep(performData)
+    tx = poker.performUpkeep(performData, {"from": upkeep_caller})
     (upkeepNeeded, performData) = poker.checkUpkeep(b"")
     assert upkeepNeeded is False, "Poker wants to poke a second time right after poking."
-    poker.setMinWaitPeriodSeconds(1000)
+    poker.setMinWaitPeriodSeconds(1000, {"from": admin})
     chain.sleep(500)
     chain.mine()
     (upkeepNeeded, performData) = poker.checkUpkeep(b"")
@@ -22,5 +22,5 @@ def test_pokeMany(admin, poker, rate_providers):
     chain.mine()
     (upkeepNeeded, performData) = poker.checkUpkeep(b"")
     assert upkeepNeeded, "Poker not ready to run again after alloted time has passed"
-    tx = poker.performUpkeep(performData)
+    tx = poker.performUpkeep(performData, {"from": upkeep_caller})
 
