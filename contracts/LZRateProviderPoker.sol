@@ -45,14 +45,13 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
     error OnlyKeeperRegistry(address sender);
 
 
-
     address public KeeperAddress;
     EnumerableSet.AddressSet private LZRateProviders;
     uint256 public MinWaitPeriodSeconds;
     uint256 public LastRun;
 
-     /**
-   * @param minWaitPeriodSeconds The minimum wait period for address between funding (for security)
+    /**
+  * @param minWaitPeriodSeconds The minimum wait period for address between funding (for security)
    */
     constructor(uint256 minWaitPeriodSeconds, address keeperAddress)
     ConfirmedOwner(msg.sender) {
@@ -60,50 +59,54 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
         setKeeperAddress(keeperAddress);
     }
 
-      /**
-   * @notice Check if enough time has passed and if so return true and a list of rate providers to poke based on the
+    /**
+ * @notice Check if enough time has passed and if so return true and a list of rate providers to poke based on the
    * @notice current contents of LZRateProviders.  This is done to save gas from getting EnumerableSet values on execution.
    * @return upkeepNeeded signals if upkeep is needed, performData is an abi encoded list of addresses to poke
    */
-  function checkUpkeep(bytes calldata) external view override whenNotPaused
-  returns (bool upkeepNeeded, bytes memory performData){
-      if(address(this).balance < 0.01 ether){
+    function checkUpkeep(bytes calldata) external view override whenNotPaused
+    returns (bool upkeepNeeded, bytes memory performData){
+        if (address(this).balance < 0.01 ether) {
             return (false, abi.encode(new address[](0)));
         }
-      if (
-          LastRun + MinWaitPeriodSeconds <= block.timestamp
-      ) {
-          return (true, abi.encode(getRateProviders()));
-      } else {
-          return (false, abi.encode(new address[](0)));
-      }
-  }
+        if (
+            LastRun + MinWaitPeriodSeconds <= block.timestamp
+        ) {
+            return (true, abi.encode(getRateProviders()));
+        } else {
+            return (false, abi.encode(new address[](0)));
+        }
+    }
 
     function performUpkeep(bytes calldata performData) external override whenNotPaused onlyKeeper {
-        if(address(this).balance < 0.01 ether){
+        if (address(this).balance < 0.01 ether) {
             revert("not enough funds in contract");
         }
-        address[] memory toPoke = abi.decode(performData, (address[]));
-        _pokeList(toPoke);
-        LastRun = block.timestamp;
-  }
+        if (LastRun + MinWaitPeriodSeconds <= block.timestamp) {
+            address[] memory toPoke = abi.decode(performData, (address[]));
+            _pokeList(toPoke);
+            LastRun = block.timestamp;
+        } else {
+            revert("not ready");
+        }
+    }
 
-       /**
-   * @notice Calls updateRate() on a list of LZ Rate Providers
+    /**
+* @notice Calls updateRate() on a list of LZ Rate Providers
    */
     function pokeList(address[] memory rateProviders) external whenNotPaused onlyOwner {
 
         _pokeList(rateProviders);
     }
 
-     /**
-   * @notice Calls updateRate() on a list of LZ Rate Providers
+    /**
+  * @notice Calls updateRate() on a list of LZ Rate Providers
    */
     function _pokeList(address[] memory rateProviders) internal whenNotPaused {
-        if(address(this).balance < 0.01 ether){
+        if (address(this).balance < 0.01 ether) {
             revert("not enough funds in contract");
         }
-        for (uint i=0; i<rateProviders.length; i++){
+        for (uint i = 0; i < rateProviders.length; i++) {
             try ICrossChainRateProvider(rateProviders[i]).updateRate{value: 0.01 ether}(){
                 // updateRate() fires an event on success
             }
@@ -113,25 +116,26 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
         }
     }
 
-    function addRateProvider (address rateProvider) public onlyOwner {
-        if(LZRateProviders.add(rateProvider)) {
+    function addRateProvider(address rateProvider) public onlyOwner {
+        if (LZRateProviders.add(rateProvider)) {
             emit rateProviderAdded(rateProvider);
         } else {
             emit rateProviderAlreadyExists(rateProvider);
         }
     }
 
-    function addRateProviders (address[] memory rateProviders) public onlyOwner {
-        for(uint i=0; i<rateProviders.length; i++){
-             if(LZRateProviders.add(rateProviders[i])) {
-                 emit rateProviderAdded(rateProviders[i]);
-             } else {
-                 emit rateProviderAlreadyExists(rateProviders[i]);
-             }
+    function addRateProviders(address[] memory rateProviders) public onlyOwner {
+        for (uint i = 0; i < rateProviders.length; i++) {
+            if (LZRateProviders.add(rateProviders[i])) {
+                emit rateProviderAdded(rateProviders[i]);
+            } else {
+                emit rateProviderAlreadyExists(rateProviders[i]);
+            }
         }
     }
+
     function removeRateProvider(address rateProvider) public onlyOwner {
-        if(LZRateProviders.remove(rateProvider)){
+        if (LZRateProviders.remove(rateProvider)) {
             emit rateProviderRemove(rateProvider);
         } else {
             emit removeNonexistentRateProvider(rateProvider);
@@ -139,8 +143,8 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
     }
 
     function removeRateProviders(address[] memory rateProviders) public onlyOwner {
-        for(uint i=0; i<rateProviders.length; i++){
-            if(LZRateProviders.remove(rateProviders[i])){
+        for (uint i = 0; i < rateProviders.length; i++) {
+            if (LZRateProviders.remove(rateProviders[i])) {
                 emit rateProviderRemove(rateProviders[i]);
             } else {
                 emit removeNonexistentRateProvider(rateProviders[i]);
@@ -188,12 +192,12 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
         emit minWaitPeriodUpdated(MinWaitPeriodSeconds);
         MinWaitPeriodSeconds = minWaitSeconds;
     }
-  /**
-   * @notice Receive funds
+    /**
+     * @notice Receive funds
    */
-  receive() external payable {
-    emit FundsAdded(msg.value, address(this).balance, msg.sender);
-  }
+    receive() external payable {
+        emit FundsAdded(msg.value, address(this).balance, msg.sender);
+    }
 
     /**
      * @notice Pauses the contract, which prevents executing performUpkeep
@@ -213,8 +217,8 @@ contract LZRateProviderPoker is ConfirmedOwner, Pausable, KeeperCompatibleInterf
         if (msg.sender != KeeperAddress && msg.sender != owner()) {
             revert OnlyKeeperRegistry(msg.sender);
         }
-    _;
-  }
+        _;
+    }
 
 }
 
