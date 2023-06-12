@@ -4,6 +4,14 @@ from brownie import chain
 import pytest
 
 
+def test_upkeepTwice(admin, poker, upkeep_caller, rate_providers):
+    poker.addRateProviders(rate_providers, {"from": admin})
+    admin.transfer(poker, 1 * 10 ** 18)
+    (upkeepNeeded, performData) = poker.checkUpkeep(b"")
+    assert upkeepNeeded, "Poker doesn't want to poke when it's got eth, never run, and has things to poke"
+    tx = poker.performUpkeep(performData, {"from": upkeep_caller})
+    with brownie.reverts("not ready"):
+        tx2 = poker.performUpkeep(performData, {"from": upkeep_caller})
 
 def test_pokeMany(admin, poker, upkeep_caller, rate_providers):
     poker.addRateProviders(rate_providers, {"from": admin})
